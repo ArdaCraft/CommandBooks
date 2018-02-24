@@ -10,6 +10,8 @@ import me.dags.config.Config;
 import me.dags.config.Node;
 import org.spongepowered.api.Sponge;
 import org.spongepowered.api.config.ConfigDir;
+import org.spongepowered.api.data.DataQuery;
+import org.spongepowered.api.data.MemoryDataContainer;
 import org.spongepowered.api.data.key.Keys;
 import org.spongepowered.api.data.type.HandTypes;
 import org.spongepowered.api.entity.living.player.Player;
@@ -21,6 +23,7 @@ import org.spongepowered.api.event.item.inventory.InteractItemEvent;
 import org.spongepowered.api.item.ItemTypes;
 import org.spongepowered.api.item.inventory.ItemStack;
 import org.spongepowered.api.plugin.Plugin;
+import org.spongepowered.api.scheduler.Task;
 import org.spongepowered.api.text.Text;
 
 import javax.inject.Inject;
@@ -48,7 +51,7 @@ public class CommandBooks {
     }
 
     @Listener
-    public void use(InteractItemEvent.Primary.MainHand event, @Root Player player) {
+    public void swing(InteractItemEvent.Primary.MainHand event, @Root Player player) {
         Optional<List<String>> commands = getCommands(player);
         if (!commands.isPresent()) {
             return;
@@ -57,8 +60,12 @@ public class CommandBooks {
         event.setCancelled(true);
 
         Fmt.info("Processing commands...").tell(player);
+        long delay = 0L;
         for (String command : commands.get()) {
-            Sponge.getCommandManager().process(player, command);
+            Task.builder().execute(() -> Sponge.getCommandManager().process(player, command))
+                    .delayTicks(delay)
+                    .submit(this);
+            delay += 2L;
         }
     }
 
@@ -93,14 +100,9 @@ public class CommandBooks {
             Fmt.error("A book by that name does not exist").tell(player);
             return;
         }
-
-        List<Text> pages = new LinkedList<>();
-        book.iterate(node -> pages.add(Text.of(node.get(""))));
-        ItemStack item = ItemStack.builder()
-                .itemType(ItemTypes.WRITABLE_BOOK)
-                .add(Keys.BOOK_PAGES, pages)
-                .build();
-
+        List<String> pages = new LinkedList<>();
+        book.iterate(node -> pages.add(node.get("")));
+        ItemStack item = buildBook(name, pages);
         player.getInventory().offer(item);
         Fmt.info("Loaded CommandBook ").stress(name).tell(player);
     }
@@ -136,7 +138,10 @@ public class CommandBooks {
     }
 
     private static Optional<List<String>> getCommands(Player player) {
-        Optional<List<Text>> pages = player.getItemInHand(HandTypes.MAIN_HAND).flatMap(stack -> stack.get(Keys.BOOK_PAGES));
+        Optional<List<Text>> pages = player.getItemInHand(HandTypes.MAIN_HAND)
+                .filter(stack -> stack.getItem() == ItemTypes.WRITABLE_BOOK)
+                .flatMap(stack -> stack.get(Keys.BOOK_PAGES));
+
         if (!pages.isPresent()) {
             return Optional.empty();
         }
@@ -148,5 +153,15 @@ public class CommandBooks {
         }
 
         return Optional.of(commands);
+    }
+
+    // sponge can't correctly build a book from a list of Texts :/
+    private static ItemStack buildBook(String name, List<String> pages) {
+        MemoryDataContainer container = new MemoryDataContainer();
+        container.set(DataQuery.of("ItemType"), "writable_book");
+        container.set(DataQuery.of("Count"), 1);
+        container.set(DataQuery.of("UnsafeDamage"), 0);
+        container.set(DataQuery.of("UnsafeData", "pages"), pages);
+        return ItemStack.builder().fromContainer(container).keyValue(Keys.DISPLAY_NAME, Fmt.stress(name).toText()).build();
     }
 }

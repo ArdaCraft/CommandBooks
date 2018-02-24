@@ -26,7 +26,7 @@ repositories {
 dependencies {
     compile "org.spongepowered:spongeapi:${spongeAPI}-$spongeChannel"
     shadow 'com.github.dags-:CommandBus:2.0.0-TEST-9'
-    shadow ('com.github.dags-:Config:1.0-1') {
+    shadow ('com.github.dags-:Config:1.0.1') {
         transitive = false
     }
 }
